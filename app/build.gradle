@@ -4,17 +4,17 @@ apply plugin: 'com.security.plugin'
 replaceSP {
     className "com/igor/sample/myapplication1/utils/SPUtil1"
 
-    getString "getString,(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
-    putString "putStringWithCommit,(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"
+    getString "getString"
+    putString "putStringWithCommit"
 
-    getLong "getLong,(Landroid/content/Context;Ljava/lang/String;JLjava/lang/String;)J"
-    putLong "putLongWithApply,(Landroid/content/Context;Ljava/lang/String;JLjava/lang/String;)V"
+    getLong "getLong"
+    putLong "putLongWithApply"
 
-    getBoolean "getBoolean,(Landroid/content/Context;Ljava/lang/String;ZLjava/lang/String;)Z"
-    putBoolean "putBooleanWithApply,(Landroid/content/Context;Ljava/lang/String;ZLjava/lang/String;)V"
+    getBoolean "getBoolean"
+    putBoolean "putBooleanWithApply"
 
-    getInt "getInt,(Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;)I"
-    putInt "putIntWithApply,(Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;)V"
+    getInt "getInt"
+    putInt "putIntWithApply"
 }
 
 android {

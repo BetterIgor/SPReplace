@@ -183,8 +183,8 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                                                         logReplaceNode(node)
                                                         println "extras: " + putMtdInfo[0] + "," + putMtdInfo[1]
                                                         methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, putMtdInfo[0], putMtdInfo[1]))
-                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
                                                         methodNode.instructions.insert(node, new VarInsnNode(putMtdType, 2))
+                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
                                                         methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
                                                         methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
                                                         methodNode.instructions.remove(node)
@@ -198,8 +198,8 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                                                         isChange = true
                                                         logReplaceNode(node)
                                                         methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, getMtdInfo[0], getMtdInfo[1]))
-                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
                                                         methodNode.instructions.insert(node, new VarInsnNode(getLoadType(node.name), 2))
+                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
                                                         methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
                                                         methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
                                                         methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ASTORE, 1))
@@ -319,28 +319,28 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
         def result
         switch (name) {
             case "getString":
-                result = mReplaceSPExt.getString
+                result = mReplaceSPExt.getString + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
                 break
             case "putString":
-                result = mReplaceSPExt.putString
+                result = mReplaceSPExt.putString + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"
                 break
             case "getBoolean":
-                result = mReplaceSPExt.getBoolean
+                result = mReplaceSPExt.getBoolean + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Z)Z"
                 break
             case "putBoolean":
-                result = mReplaceSPExt.putBoolean
+                result = mReplaceSPExt.putBoolean + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Z)V"
                 break
             case "getInt":
-                result = mReplaceSPExt.getInt
+                result = mReplaceSPExt.getInt + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)I"
                 break
             case "putInt":
-                result = mReplaceSPExt.putInt
+                result = mReplaceSPExt.putInt + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;I)V"
                 break
             case "getLong":
-                result = mReplaceSPExt.getLong
+                result = mReplaceSPExt.getLong + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;J)J"
                 break
             case "putLong":
-                result = mReplaceSPExt.putLong
+                result = mReplaceSPExt.putLong + "," + "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;J)V"
                 break
         }
         if (result == null) {

@@ -14,21 +14,21 @@ public class SPUtil1 {
                 .getSharedPreferences(name, Context.MODE_PRIVATE);
     }
 
-    public static void putStringWithCommit(Context context, String key, String value, String name) {
+    public static void putStringWithCommit(Context context, String key, String name, String value) {
         getEditor(context, name)
                 .edit()
                 .putString(key, value + "_value")
                 .commit();
     }
 
-    public static String getString(Context context, String key, String value, String name) {
+    public static String getString(Context context, String key, String name, String value) {
         String s = getEditor(context, name)
                 .getString(key, value);
         Log.d(TAG, "getString res: " + s);
         return s;
     }
 
-    public static boolean getBoolean(Context context, String key, boolean value, String name) {
+    public static boolean getBoolean(Context context, String key, String name, boolean value) {
         boolean b = getEditor(context, name)
                 .getBoolean(key, value);
         Log.d(TAG, "getBoolean: " + b);
@@ -36,7 +36,7 @@ public class SPUtil1 {
     }
 
     @TargetApi(Build.VERSION_CODES.GINGERBREAD)
-    public static void putBooleanWithApply(Context context, String key, boolean value, String name) {
+    public static void putBooleanWithApply(Context context, String key, String name, boolean value) {
         getEditor(context, name)
                 .edit()
                 .putBoolean(key, value)
@@ -44,14 +44,14 @@ public class SPUtil1 {
     }
 
     @TargetApi(Build.VERSION_CODES.GINGERBREAD)
-    public static void putIntWithApply(Context context, String key, int value, String name) {
+    public static void putIntWithApply(Context context, String key, String name, int value) {
         getEditor(context, name)
                 .edit()
                 .putInt(key, value + 100)
                 .apply();
     }
 
-    public static int getInt(Context context, String key, int value, String name) {
+    public static int getInt(Context context, String key, String name, int value) {
         int b = getEditor(context, name)
                 .getInt(key, value);
         Log.d(TAG, "getInt: " + b);
@@ -59,14 +59,14 @@ public class SPUtil1 {
     }
 
     @TargetApi(Build.VERSION_CODES.GINGERBREAD)
-    public static void putLongWithApply(Context context, String key, long value, String name) {
+    public static void putLongWithApply(Context context, String key, String name, long value) {
         getEditor(context, name)
                 .edit()
                 .putLong(key, value + 100)
                 .apply();
     }
 
-    public static long getLong(Context context, String key, long value, String name) {
+    public static long getLong(Context context, String key, String name, long value) {
         long b = getEditor(context, name)
                 .getLong(key, value);
         Log.d(TAG, "getLong: " + b);
