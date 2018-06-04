@@ -44,6 +44,10 @@ class TraceVisitor extends ClassVisitor {
     MethodVisitor visitMethod(final int access, final String name,
                               final String desc,
                               final String signature, String[] exceptions) {
+        if (name == "putBooleanWithApply") {
+            println "remove mtd: " + name
+            return
+        }
 //        println "visitMethod: access:" + access + ", name:" + name + ", desc:" + desc + ", signature:" + signature
         MethodVisitor methodVisitor = cv.visitMethod(access, name, desc, signature, exceptions)
         methodVisitor = new AdviceAdapter(Opcodes.ASM5, methodVisitor, access, name, desc) {
@@ -83,13 +87,13 @@ class TraceVisitor extends ClassVisitor {
             protected void onMethodEnter() {
 //                println "mtd enter: "
 //                if (isInject()) {
-                    if (desc != null && desc.contains("SharedPreferences" )) {
-                        mv.visitVarInsn(ALOAD, 0)
-                        mv.visitMethodInsn(INVOKESTATIC,
-                                "com/igor/sample/myapplication1/utils/TraceUtil",
-                                "onCreate", "(Landroid/app/Activity;)V",
-                                false)
-                    }
+                if (desc != null && desc.contains("SharedPreferences")) {
+                    mv.visitVarInsn(ALOAD, 0)
+                    mv.visitMethodInsn(INVOKESTATIC,
+                            "com/igor/sample/myapplication1/utils/TraceUtil",
+                            "onCreate", "(Landroid/app/Activity;)V",
+                            false)
+                }
 //                }
             }
 

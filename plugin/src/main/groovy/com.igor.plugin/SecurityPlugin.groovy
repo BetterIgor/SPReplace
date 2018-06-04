@@ -13,6 +13,7 @@ import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.*
+import org.objectweb.asm.util.CheckClassAdapter
 import org.objectweb.asm.util.TraceClassVisitor
 
 import java.util.jar.JarEntry
@@ -74,7 +75,8 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
         println "opcode: " + ((MethodInsnNode) node).opcode
     }
 
-    private void logASMSourceCode(final byte[] bytes, final String filePath) {
+    private void logASMSourceCode(
+            final byte[] bytes, final String filePath, final boolean showLog) {
         ClassReader classReader = new ClassReader(bytes)
         OutputStream outputStream = new ByteArrayOutputStream()
         PrintWriter printWriter = new PrintWriter(outputStream)
@@ -82,13 +84,21 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
         TraceClassVisitor cv = new TraceClassVisitor(classWriter, printWriter)
         classReader.accept(cv, EXPAND_FRAMES)
 
-        // 将修改后的asm源码输出到文件中，用作和源文件对比
-        FileOutputStream fos = new FileOutputStream(filePath)
-        fos.write(outputStream.toString().bytes)
-        fos.close()
+        if (!showLog) {
+            // 将修改后的asm源码输出到文件中，用作和源文件对比
+            FileOutputStream fos = new FileOutputStream(filePath)
+            fos.write(outputStream.toString().bytes)
+            fos.close()
+        } else {
+            println "==================AMS Source Code============================"
+            println outputStream.toString()
+            println "============================================================="
+        }
+
     }
 
     private String fieldName = "CURRENT_SP_NAME", fieldDesc = "Ljava/lang/String;"
+    private boolean isChange = false
 
     @Override
     void transform(Context context, Collection<TransformInput> inputs,
@@ -107,122 +117,23 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                         directoryInput.file.eachFileRecurse {
                             File file ->
                                 def name = file.name
-                                def isChange
+                                isChange = false
                                 if (name.endsWith(".class") && !name.startsWith("R\$") &&
                                         "R.class" != name && "BuildConfig.class" != name) {
 
-                                    isChange = false
-                                    def spName
+                                    // 修改class字节码
+                                    byte[] classBytes = updateClass(file.bytes)
 
-                                    ClassReader classReader = new ClassReader(file.bytes)
-                                    ClassNode classNode = new ClassNode()
-                                    classReader.accept(classNode, 0)
-                                    if (classNode.name != mReplaceSPExt.className || (mExceptClass != null && !mExceptClass.contains(classNode.name))) {
-                                        for (MethodNode methodNode : classNode.methods) {
-//                                            println "---------------------------------------"
-//                                            println "mtd owner: " + methodNode.name
-//                                            println "mtd desc: " + methodNode.desc
-                                            String[] putMtdInfo
-                                            int putMtdType
-                                            for (AbstractInsnNode node : methodNode.instructions.toArray()) {
-                                                String className = node.getClass().toString()
-//                                                if (methodNode.name == "getEditor") {
-//                                                    println "instructions:" + node.getClass()
-//                                                }
-                                                if ("class org.objectweb.asm.tree.MethodInsnNode" == className) {
-
-                                                    // 获取SP存储的文件名称和文件的访问模式
-                                                    if (((MethodInsnNode) node).desc == "(Ljava/lang/String;I)Landroid/content/SharedPreferences;"
-                                                            && ((MethodInsnNode) node).owner == "android/content/Context"
-                                                            && ((MethodInsnNode) node).name == "getSharedPreferences") {
-
-                                                        def labelCount = 0
-                                                        AbstractInsnNode currentNode = node
-                                                        AbstractInsnNode pre
-                                                        while (labelCount <= 2 && currentNode != null) {
-                                                            pre = currentNode.previous
-                                                            if (pre.getClass().toString() == "class org.objectweb.asm.tree.LabelNode") {
-                                                                labelCount++
-                                                            } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.InsnNode") {
-//                                                                println "InsnNode toString: " + ((InsnNode)pre).toString()
-                                                            } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.LdcInsnNode") {
-                                                                spName = (String) ((LdcInsnNode) pre).cst
-                                                                // 创建当前的SP文件名称属性并赋值
-                                                                classNode.visitField(Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_FINAL,
-                                                                        fieldName, fieldDesc, null, spName).visitEnd()
-                                                            }
-                                                            currentNode = pre
-                                                        }
-                                                    }
-
-//                                                    if ((((MethodInsnNode) node).name == "edit" && ((MethodInsnNode) node).owner == "android/content/SharedPreferences" && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;")
-//                                                            || (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor" && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))
-//                                                            || ((MethodInsnNode) node).desc == "(Landroid/content/Context;)Landroid/content/SharedPreferences;") {
-
-                                                    // 弹出当前方法的第一个参数：context
-//                                                    if (((MethodInsnNode) node).name == "edit"
-//                                                            && ((MethodInsnNode) node).owner == "android/content/SharedPreferences"
-//                                                            && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;") {
-//                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
-//                                                    }
-
-                                                    // 删除put系列方法的字节码,同时记录当前的参数用于修改提交时使用
-                                                    if ((((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
-                                                            && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))) {
-                                                        putMtdInfo = getMtdInfo(node.name).split(",")
-                                                        putMtdType = getLoadType(node.name)
-//                                                        logReplaceNode(node)
-//                                                        methodNode.instructions.remove(node)
-                                                    }
-
-                                                    // 替换原有存储的提交方式
-                                                    if (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
-                                                            && (((MethodInsnNode) node).name == "commit" || ((MethodInsnNode) node).name == "apply")
-                                                            && putMtdInfo != null && putMtdInfo.length > 1) {
-                                                        isChange = true
-                                                        logReplaceNode(node)
-                                                        println "extras: " + putMtdInfo[0] + "," + putMtdInfo[1]
-                                                        methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, putMtdInfo[0], putMtdInfo[1]))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(putMtdType, 2))
-                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
-                                                        methodNode.instructions.remove(node)
-                                                    }
-
-                                                    String[] getMtdInfo = getMtdInfo(node.name).split(",")
-                                                    // 替换get系列的逻辑
-                                                    if (((MethodInsnNode) node).owner == "android/content/SharedPreferences"
-                                                            && ((MethodInsnNode) node).name.contains("get")
-                                                            && getMtdInfo != null && getMtdInfo.length > 1) {
-                                                        isChange = true
-                                                        logReplaceNode(node)
-                                                        methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, getMtdInfo[0], getMtdInfo[1]))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(getLoadType(node.name), 2))
-                                                        methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ASTORE, 1))
-                                                        methodNode.instructions.insert(node, new VarInsnNode(getStoreType(node.name), 2))
-                                                        methodNode.instructions.remove(node)
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // 如果有修改则覆盖原文件
-                                        if (isChange) {
-                                            ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS)
-                                            classNode.accept(classWriter)
-                                            FileOutputStream fos = new FileOutputStream(
-                                                    file.parentFile.absolutePath + File.separator + name)
-                                            fos.write(classWriter.toByteArray())
-                                            fos.close()
-                                            println "-----------------------------------------------"
-                                            println "REPLACE CLASS : " + classNode.name
-                                            println "-----------------------------------------------"
-                                            logASMSourceCode(classWriter.toByteArray(), file.parentFile.absolutePath + File.separator + name + ".asm")
-                                        }
+                                    // 如果有修改则需要覆盖原文件
+                                    if (isChange) {
+                                        FileOutputStream fos = new FileOutputStream(
+                                                file.parentFile.absolutePath + File.separator + name)
+                                        fos.write(classBytes)
+                                        fos.close()
+                                        println "-----------------------------------------------"
+                                        println "REPLACE CLASS : " + file.absolutePath
+                                        println "-----------------------------------------------"
+                                        logASMSourceCode(classBytes, file.parentFile.absolutePath + File.separator + name + ".asm")
                                     }
                                 }
                         }
@@ -245,7 +156,7 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                 if (jarName.endsWith(".jar")) {
                     jarName = jarName.substring(0, jarName.length() - 4)
                 }
-//                println "scan jar : " + jarName
+                println "scan jar : " + jarName
 
                 File tmpFile = null
                 if (jarInput.file.getAbsolutePath().endsWith(".jar")) {
@@ -266,12 +177,23 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                         //println "MeetyouCost entryName :" + entryName
                         InputStream inputStream = jarFile.getInputStream(jarEntry)
                         //如果是inject文件就跳过
-//                        println "=======" + entryName
 
                         //插桩class
                         if (entryName.endsWith(".class") && !entryName.contains("R\$") &&
                                 !entryName.contains("R.class") && !entryName.contains("BuildConfig.class")) {
-                            //class文件处理
+//                            jarOutputStream.putNextEntry(zipEntry)
+//                            isChange = false
+//                            byte[] code = updateJar(IOUtils.toByteArray(inputStream))
+//                            if (isChange) {
+//                                jarOutputStream.write(checkGeneratedClass(code))
+//                                println "-----------------------------------------------"
+//                                println "REPLACE JAR : " + entryName
+////                                logASMSourceCode(code, "", true)
+//                                println "-----------------------------------------------"
+//                            } else {
+//                                jarOutputStream.write(IOUtils.toByteArray(inputStream))
+//                            }
+
                             jarOutputStream.putNextEntry(zipEntry)
                             ClassReader classReader = new ClassReader(IOUtils.toByteArray(inputStream))
                             ClassWriter classWriter = new ClassWriter(classReader, ClassWriter.COMPUTE_MAXS)
@@ -313,6 +235,239 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
             }
         }
         println '===============Security Plugin visit end==============='
+    }
+
+    /**
+     * 验证字节码是否合法
+     * @param classBytes
+     * @return
+     * @throws ClassFormatError
+     */
+    private static byte[] checkGeneratedClass(byte[] classBytes)
+            throws ClassFormatError {
+        ClassReader cr = new ClassReader(classBytes)
+        StringWriter sw = new StringWriter()
+        PrintWriter pw = new PrintWriter(sw)
+        try {
+            CheckClassAdapter.verify(cr, false, pw)
+        }
+        catch (Exception ignored) {
+        }
+        if (sw.toString().length() > 0) {
+            throw new ClassFormatError(sw.toString())
+        }
+        println "checkGeneratedClass is checked"
+        return classBytes
+    }
+
+    private byte[] updateClass(byte[] bytes) {
+        def spName
+
+        ClassReader classReader = new ClassReader(bytes)
+        ClassNode classNode = new ClassNode()
+        classReader.accept(classNode, 0)
+        if (classNode.name != mReplaceSPExt.className || (mExceptClass != null && !mExceptClass.contains(classNode.name))) {
+            for (MethodNode methodNode : classNode.methods) {
+//                                            println "---------------------------------------"
+//                                            println "mtd owner: " + methodNode.name
+//                                            println "mtd desc: " + methodNode.desc
+                String[] putMtdInfo
+                int putMtdType
+                for (AbstractInsnNode node : methodNode.instructions.toArray()) {
+                    String className = node.getClass().toString()
+//                                                if (methodNode.name == "getEditor") {
+//                                                    println "instructions:" + node.getClass()
+//                                                }
+                    if ("class org.objectweb.asm.tree.MethodInsnNode" == className) {
+
+                        // 获取SP存储的文件名称和文件的访问模式
+                        if (((MethodInsnNode) node).desc == "(Ljava/lang/String;I)Landroid/content/SharedPreferences;"
+                                && ((MethodInsnNode) node).owner == "android/content/Context"
+                                && ((MethodInsnNode) node).name == "getSharedPreferences") {
+
+                            def labelCount = 0
+                            AbstractInsnNode currentNode = node
+                            AbstractInsnNode pre
+                            while (labelCount <= 2 && currentNode != null) {
+                                pre = currentNode.previous
+                                if (pre.getClass().toString() == "class org.objectweb.asm.tree.LabelNode") {
+                                    labelCount++
+                                } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.InsnNode") {
+//                                                                println "InsnNode toString: " + ((InsnNode)pre).toString()
+                                } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.LdcInsnNode") {
+                                    spName = (String) ((LdcInsnNode) pre).cst
+                                    // 创建当前的SP文件名称属性并赋值
+                                    classNode.visitField(Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_FINAL,
+                                            fieldName, fieldDesc, null, spName).visitEnd()
+                                }
+                                currentNode = pre
+                            }
+                        }
+
+//                                                    if ((((MethodInsnNode) node).name == "edit" && ((MethodInsnNode) node).owner == "android/content/SharedPreferences" && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;")
+//                                                            || (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor" && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))
+//                                                            || ((MethodInsnNode) node).desc == "(Landroid/content/Context;)Landroid/content/SharedPreferences;") {
+
+                        // 弹出当前方法的第一个参数：context
+//                                                    if (((MethodInsnNode) node).name == "edit"
+//                                                            && ((MethodInsnNode) node).owner == "android/content/SharedPreferences"
+//                                                            && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;") {
+//                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+//                                                    }
+
+                        // 删除put系列方法的字节码,同时记录当前的参数用于修改提交时使用
+                        if ((((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
+                                && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))) {
+                            putMtdInfo = getMtdInfo(node.name).split(",")
+                            putMtdType = getLoadType(node.name)
+//                                                        logReplaceNode(node)
+//                                                        methodNode.instructions.remove(node)
+                        }
+
+                        // 替换原有存储的提交方式
+                        if (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
+                                && (((MethodInsnNode) node).name == "commit" || ((MethodInsnNode) node).name == "apply")
+                                && putMtdInfo != null && putMtdInfo.length > 1) {
+                            isChange = true
+                            logReplaceNode(node)
+                            println "extras: " + putMtdInfo[0] + "," + putMtdInfo[1]
+                            methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, putMtdInfo[0], putMtdInfo[1]))
+                            methodNode.instructions.insert(node, new VarInsnNode(putMtdType, 2))
+                            methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+                            methodNode.instructions.remove(node)
+                        }
+
+                        String[] getMtdInfo = getMtdInfo(node.name).split(",")
+                        // 替换get系列的逻辑
+                        if (((MethodInsnNode) node).owner == "android/content/SharedPreferences"
+                                && ((MethodInsnNode) node).name.contains("get")
+                                && getMtdInfo != null && getMtdInfo.length > 1) {
+                            isChange = true
+                            logReplaceNode(node)
+                            methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, getMtdInfo[0], getMtdInfo[1]))
+                            methodNode.instructions.insert(node, new VarInsnNode(getLoadType(node.name), 2))
+                            methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ASTORE, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(getStoreType(node.name), 2))
+                            methodNode.instructions.remove(node)
+                        }
+                    }
+                }
+            }
+
+            ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS)
+            classNode.accept(classWriter)
+            return classWriter.toByteArray()
+        }
+    }
+
+    private byte[] updateJar(byte[] bytes) {
+        def spName
+
+        ClassReader classReader = new ClassReader(bytes)
+        ClassNode classNode = new ClassNode()
+        classReader.accept(classNode, 0)
+        if (classNode.name != mReplaceSPExt.className || (mExceptClass != null && !mExceptClass.contains(classNode.name))) {
+            for (MethodNode methodNode : classNode.methods) {
+//                                            println "---------------------------------------"
+//                                            println "mtd owner: " + methodNode.name
+//                                            println "mtd desc: " + methodNode.desc
+                String[] putMtdInfo
+                int putMtdType
+                for (AbstractInsnNode node : methodNode.instructions.toArray()) {
+                    String className = node.getClass().toString()
+//                                                if (methodNode.name == "getEditor") {
+//                                                    println "instructions:" + node.getClass()
+//                                                }
+                    if ("class org.objectweb.asm.tree.MethodInsnNode" == className) {
+
+                        // 获取SP存储的文件名称和文件的访问模式
+                        if (((MethodInsnNode) node).desc == "(Ljava/lang/String;I)Landroid/content/SharedPreferences;"
+                                && ((MethodInsnNode) node).owner == "android/content/Context"
+                                && ((MethodInsnNode) node).name == "getSharedPreferences") {
+
+                            def labelCount = 0
+                            AbstractInsnNode currentNode = node
+                            AbstractInsnNode pre
+                            while (labelCount <= 2 && currentNode != null) {
+                                pre = currentNode.previous
+                                if (pre.getClass().toString() == "class org.objectweb.asm.tree.LabelNode") {
+                                    labelCount++
+                                } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.InsnNode") {
+//                                                                println "InsnNode toString: " + ((InsnNode)pre).toString()
+                                } else if (pre.getClass().toString() == "class org.objectweb.asm.tree.LdcInsnNode") {
+                                    spName = (String) ((LdcInsnNode) pre).cst
+                                    // 创建当前的SP文件名称属性并赋值
+                                    classNode.visitField(Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_FINAL,
+                                            fieldName, fieldDesc, null, spName).visitEnd()
+                                }
+                                currentNode = pre
+                            }
+                        }
+
+//                                                    if ((((MethodInsnNode) node).name == "edit" && ((MethodInsnNode) node).owner == "android/content/SharedPreferences" && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;")
+//                                                            || (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor" && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))
+//                                                            || ((MethodInsnNode) node).desc == "(Landroid/content/Context;)Landroid/content/SharedPreferences;") {
+
+                        // 弹出当前方法的第一个参数：context
+//                                                    if (((MethodInsnNode) node).name == "edit"
+//                                                            && ((MethodInsnNode) node).owner == "android/content/SharedPreferences"
+//                                                            && ((MethodInsnNode) node).desc == "()Landroid/content/SharedPreferences\$Editor;") {
+//                                                        methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+//                                                    }
+
+                        // 删除put系列方法的字节码,同时记录当前的参数用于修改提交时使用
+                        if ((((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
+                                && ((MethodInsnNode) node).desc.contains("Landroid/content/SharedPreferences\$Editor;"))) {
+                            putMtdInfo = getMtdInfo(node.name).split(",")
+                            putMtdType = getLoadType(node.name)
+//                                                        logReplaceNode(node)
+//                                                        methodNode.instructions.remove(node)
+                        }
+
+                        // 替换原有存储的提交方式
+                        if (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
+                                && (((MethodInsnNode) node).name == "commit" || ((MethodInsnNode) node).name == "apply")
+                                && putMtdInfo != null && putMtdInfo.length > 1) {
+                            isChange = true
+                            logReplaceNode(node)
+                            println "extras: " + putMtdInfo[0] + "," + putMtdInfo[1]
+                            methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, putMtdInfo[0], putMtdInfo[1]))
+                            methodNode.instructions.insert(node, new VarInsnNode(putMtdType, 2))
+                            methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+                            methodNode.instructions.remove(node)
+                        }
+
+                        String[] getMtdInfo = getMtdInfo(node.name).split(",")
+                        // 替换get系列的逻辑
+                        if (((MethodInsnNode) node).owner == "android/content/SharedPreferences"
+                                && ((MethodInsnNode) node).name.contains("get")
+                                && getMtdInfo != null && getMtdInfo.length > 1) {
+                            isChange = true
+                            logReplaceNode(node)
+                            methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, getMtdInfo[0], getMtdInfo[1]))
+                            methodNode.instructions.insert(node, new VarInsnNode(getLoadType(node.name), 2))
+                            methodNode.instructions.insert(node, new FieldInsnNode(Opcodes.GETSTATIC, classNode.name, fieldName, fieldDesc))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ALOAD, 0))
+                            methodNode.instructions.insert(node, new VarInsnNode(Opcodes.ASTORE, 1))
+                            methodNode.instructions.insert(node, new VarInsnNode(getStoreType(node.name), 2))
+                            methodNode.instructions.remove(node)
+                        }
+                    }
+                }
+            }
+
+            ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS)
+            classNode.accept(classWriter)
+            return classWriter.toByteArray()
+        }
     }
 
     private String getMtdInfo(String name) {
