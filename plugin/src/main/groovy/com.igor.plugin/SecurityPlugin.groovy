@@ -29,6 +29,7 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
 
     private SecurityExt mReplaceSPExt
     private String[] mExceptClass
+    private int mReplaceClassCount = 0, mReplaceGetCount = 0, mReplaceCommitCount = 0, mReplaceApplyCount = 0
 
     void apply(Project project) {
         println "================================================"
@@ -127,6 +128,7 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
 
                                     // 如果有修改则需要覆盖原文件
                                     if (isChange) {
+                                        mReplaceClassCount++
                                         FileOutputStream fos = new FileOutputStream(
                                                 file.parentFile.absolutePath + File.separator + name)
                                         fos.write(classBytes)
@@ -185,6 +187,7 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                             if (bytes != null && bytes.length > 7) {
                                 byte[] code = updateClass(bytes)
                                 if (isChange) {
+                                    mReplaceClassCount++
                                     jarOutputStream.write(code)
                                     println ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
                                     println "REPLACE JAR : " + entryName
@@ -227,6 +230,12 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                 }
             }
         }
+        println '===============Replace Instructions Result==============='
+        println "replace class: " + mReplaceClassCount
+        println "replace  getX: " + mReplaceGetCount
+        println "replace  putX: " + (mReplaceApplyCount + mReplaceCommitCount)
+        println "        apply: " + mReplaceApplyCount
+        println "       commit: " + mReplaceCommitCount
         println '===============Security Plugin visit end==============='
     }
 
@@ -321,6 +330,11 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                         if (((MethodInsnNode) node).owner == "android/content/SharedPreferences\$Editor"
                                 && (((MethodInsnNode) node).name == "commit" || ((MethodInsnNode) node).name == "apply")
                                 && putMtdInfo != null && putMtdInfo.length > 1) {
+                            if (((MethodInsnNode) node).name == "commit") {
+                                mReplaceCommitCount++
+                            } else if (((MethodInsnNode) node).name == "apply") {
+                                mReplaceApplyCount++
+                            }
                             isChange = true
                             logReplaceNode(node)
                             println "extras: " + putMtdInfo[0] + "," + putMtdInfo[1]
@@ -338,6 +352,7 @@ class SecurityPlugin extends Transform implements Plugin<Project> {
                                 && ((MethodInsnNode) node).name.contains("get")
                                 && getMtdInfo != null && getMtdInfo.length > 1) {
                             isChange = true
+                            mReplaceGetCount++
                             logReplaceNode(node)
                             methodNode.instructions.insert(node, new MethodInsnNode(Opcodes.INVOKESTATIC, mReplaceSPExt.className, getMtdInfo[0], getMtdInfo[1]))
                             methodNode.instructions.insert(node, new VarInsnNode(getLoadType(node.name), 2))
